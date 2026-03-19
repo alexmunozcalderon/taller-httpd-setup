@@ -1,30 +1,103 @@
-apiVersion: tekton.dev/v1beta1
-kind: Task
+apiVersion: tekton.dev/v1
+kind: Pipeline
 metadata:
-  name: update-gitops-repo
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: >
+      {"apiVersion":"tekton.dev/v1beta1","kind":"Pipeline","metadata":{"annotations":{},"name":"build-and-update-gitops","namespace":"cicd-alejandra"},"spec":{"params":[{"name":"source-repo-url","type":"string"},{"name":"gitops-repo-url","type":"string"},{"name":"image-tag","type":"string"},{"name":"image-name","type":"string"}],"tasks":[{"name":"fetch-source","params":[{"name":"url","value":"$(params.source-repo-url)"}],"taskRef":{"name":"git-clone"},"workspaces":[{"name":"output","workspace":"shared-workspace"}]},{"name":"generate-dynamic-tag","params":[{"name":"base-tag","value":"$(params.image-tag)"},{"name":"commit-sha","value":"$(tasks.fetch-source.results.commit)"}],"runAfter":["fetch-source"],"taskRef":{"name":"generate-tag"}},{"name":"check-image","params":[{"name":"image-url","value":"image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.image-name):$(tasks.generate-dynamic-tag.results.image-tag)"}],"runAfter":["generate-dynamic-tag"],"taskRef":{"name":"check-image-exists"}},{"name":"build-image","params":[{"name":"IMAGE","value":"image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.image-name):$(tasks.generate-dynamic-tag.results.image-tag)"}],"runAfter":["check-image"],"taskRef":{"name":"buildah"},"workspaces":[{"name":"source","workspace":"shared-workspace"}]},{"name":"update-gitops","params":[{"name":"gitops-repo-url","value":"$(params.gitops-repo-url)"},{"name":"image-tag","value":"$(tasks.generate-dynamic-tag.results.image-tag)"},{"name":"image-name","value":"$(params.image-name)"}],"retries":1,"runAfter":["build-image"],"taskRef":{"name":"update-gitops-repo"},"workspaces":[{"name":"source","workspace":"shared-workspace"}]}],"workspaces":[{"name":"shared-workspace"}]}}
+  creationTimestamp: '2026-03-19T17:24:51Z'
+  generation: 1
+  managedFields:
+    - apiVersion: tekton.dev/v1beta1
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:metadata':
+          'f:annotations':
+            .: {}
+            'f:kubectl.kubernetes.io/last-applied-configuration': {}
+        'f:spec':
+          .: {}
+          'f:params': {}
+          'f:tasks': {}
+          'f:workspaces': {}
+      manager: kubectl-client-side-apply
+      operation: Update
+      time: '2026-03-19T17:24:51Z'
+  name: build-and-update-gitops
+  namespace: cicd-alejandra
+  resourceVersion: '14574074'
+  uid: 96e31149-e00b-48cc-8ffb-4dd748107bef
 spec:
-  workspaces:
-    - name: source
   params:
+    - name: source-repo-url
+      type: string
     - name: gitops-repo-url
       type: string
     - name: image-tag
       type: string
-  steps:
-    - name: git-update
-      image: alpine/git:v2.36.2
-      workingDir: $(workspaces.source.path)
-      script: |
-        #!/bin/sh
-        set -e
-        git clone $(params.gitops-repo-url) gitops-repo
-        cd gitops-repo
-        
-        sed -i 's|image: .*|image: image-registry.openshift-image-registry.svc:5000/cicd-tu-nombre/my-app:$(params.image-tag)|g' deployment.yaml
-        
-        git config user.email "pipeline@openshift.com"
-        git config user.name "OpenShift Pipeline"
-        
-        git add deployment.yaml
-        git commit -m "Update image tag to $(params.image-tag)"
-        git push origin main
+    - name: image-name
+      type: string
+  tasks:
+    - name: fetch-source
+      params:
+        - name: url
+          value: $(params.source-repo-url)
+      taskRef:
+        kind: Task
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+    - name: generate-dynamic-tag
+      params:
+        - name: base-tag
+          value: $(params.image-tag)
+        - name: commit-sha
+          value: $(tasks.fetch-source.results.commit)
+      runAfter:
+        - fetch-source
+      taskRef:
+        kind: Task
+        name: generate-tag
+    - name: check-image
+      params:
+        - name: image-url
+          value: >-
+            image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.image-name):$(tasks.generate-dynamic-tag.results.image-tag)
+      runAfter:
+        - generate-dynamic-tag
+      taskRef:
+        kind: Task
+        name: check-image-exists
+    - name: build-image
+      params:
+        - name: IMAGE
+          value: >-
+            image-registry.openshift-image-registry.svc:5000/$(context.pipelineRun.namespace)/$(params.image-name):$(tasks.generate-dynamic-tag.results.image-tag)
+      runAfter:
+        - check-image
+      taskRef:
+        kind: Task
+        name: buildah
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+    - name: update-gitops
+      params:
+        - name: gitops-repo-url
+          value: $(params.gitops-repo-url)
+        - name: image-tag
+          value: $(tasks.generate-dynamic-tag.results.image-tag)
+        - name: image-name
+          value: $(params.image-name)
+      retries: 1
+      runAfter:
+        - build-image
+      taskRef:
+        kind: Task
+        name: update-gitops-repo
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+  workspaces:
+    - name: shared-workspace
+  finally: []
