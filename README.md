@@ -26,15 +26,15 @@ oc login -u admin  https://api.cluster.apps.com:6443
 4. Install ArgoCD Instance
 Creates the namespace and provisions the ArgoCD instance via the Operator.
 ```bash
-./install-cd.sh
+sh install-cd.sh
 ```
 
 5. Configure simple CI
 ```bash
-./setup-ci.sh
+sh setup-ci.sh
 ```
 
 6. Configure simple CD
 ```bash
-./setup-cd.sh
+sh setup-cd.sh
 ```
